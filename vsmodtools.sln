@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27703.2000
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vsmodtools", "vsmodtools\vsmodtools.csproj", "{B9506947-1C30-42E0-A663-1B38AE3442AF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B9506947-1C30-42E0-A663-1B38AE3442AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9506947-1C30-42E0-A663-1B38AE3442AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9506947-1C30-42E0-A663-1B38AE3442AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9506947-1C30-42E0-A663-1B38AE3442AF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BAEEF8B0-2871-46CD-919F-00A712C6A66E}
+	EndGlobalSection
+EndGlobal
