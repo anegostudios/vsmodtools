@@ -16,19 +16,25 @@ namespace vsmodtools
         static void Init()
         {
             // Register commands
-            registerCommand(new HelpCommand());
-            registerCommand(new ExitCommand());
+            RegisterCommand(new HelpCommand());
+            RegisterCommand(new ExitCommand());
 
-            Creator.Init();
+            Tools.Init();
 
             commands = commands.OrderBy(x => x).ToList();
 
             Console.WriteLine("VintageStory ModTools v{0}", version);
         }
 
-        public static void registerCommand(Command command)
+        public static void RegisterCommand(Command command)
         {
             commands.Add(command);
+        }
+
+        public static bool RunCommand(string[] args)
+        {
+            Command command = GetCommand(args);
+            return command != null ? command.Run(args) : false;
         }
 
         public static string GetCommandName(string[] args)
@@ -58,6 +64,8 @@ namespace vsmodtools
         {
             Init();
 
+            bool hasInitalCommands = args.Length > 0;
+
             start:
             if(args == null || args.Length == 0)
             {
@@ -66,12 +74,20 @@ namespace vsmodtools
                 args = Program.ParseArguments(text);
             }
 
-            currentCommand = GetCommand(args);
-            string name = GetCommandName(args);
-            if (currentCommand == null || !currentCommand.Run(args))
+            try
             {
-                args = null;
-                goto start;
+                currentCommand = GetCommand(args);
+                string name = GetCommandName(args);
+                if (currentCommand == null || !currentCommand.Run(args) || (!hasInitalCommands && !currentCommand.ForceExit))
+                {
+                    args = null;
+                    goto start;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("\nSomething went wrong!");
+                Console.WriteLine(e);
             }
 
             Console.WriteLine("\nPress any key to continue ...");
@@ -120,6 +136,7 @@ namespace vsmodtools
 
         public abstract bool Run(string[] args);
 
+        public virtual bool ForceExit { get { return false; } }
     }
 
     class ExitCommand : Command
@@ -133,6 +150,8 @@ namespace vsmodtools
         {
             return true;
         }
+
+        public override bool ForceExit => true;
     }
 
     class HelpCommand : Command
