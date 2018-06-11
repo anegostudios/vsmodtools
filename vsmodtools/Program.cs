@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,12 +19,41 @@ namespace vsmodtools
             // Register commands
             RegisterCommand(new HelpCommand());
             RegisterCommand(new ExitCommand());
+            RegisterCommand(new UpdateCommand());
 
             Tools.Init();
 
             commands = commands.OrderBy(x => x).ToList();
 
             Console.WriteLine("VintageStory ModTools v{0}", version);
+
+            CheckForUpdate();
+        }
+
+        public static bool CheckForUpdate()
+        {
+            using (var wc = new System.Net.WebClient())
+            {
+                var current = new Version(version);
+
+                JObject latest = JObject.Parse(wc.DownloadString("http://api.vintagestory.at/devtools/latest.json"));
+                JToken versions = latest["versions"];
+                
+                foreach (var version in versions)
+                {
+                    var otherVersion = new Version(version.Value<string>("id"));
+
+                    if(current.CompareTo(otherVersion) < 0)
+                    {
+                        ConsoleColor before = Console.ForegroundColor;
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("New update available. Please type in 'update' to get started!");
+                        Console.ForegroundColor = before;
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         public static void RegisterCommand(Command command)
@@ -122,7 +152,7 @@ namespace vsmodtools
             this.Description = description;
         }
 
-        public Command(string name, string description) : this(name, "/" + name, description)
+        public Command(string name, string description) : this(name, name, description)
         {
             
         }
@@ -169,6 +199,41 @@ namespace vsmodtools
                 Console.WriteLine(command.Syntax + " - " + command.Description);
             return false;
         }
+    }
+
+    class UpdateCommand : Command
+    {
+
+        public UpdateCommand() : base("update", "Opens a website to download the update if available")
+        {
+
+        }
+
+        public override bool Run(string[] args)
+        {
+            using (var wc = new System.Net.WebClient())
+            {
+                var current = new Version(Program.version);
+
+                JObject latest = JObject.Parse(wc.DownloadString("http://api.vintagestory.at/devtools/latest.json"));
+                JToken versions = latest["versions"];
+
+                foreach (var version in versions)
+                {
+                    var otherVersion = new Version(version.Value<string>("id"));
+
+                    if (current.CompareTo(otherVersion) < 0)
+                    {
+                        Console.WriteLine("New version available v{0}!", otherVersion);
+                        System.Diagnostics.Process.Start(version.Value<string>("url"));
+                        return true;
+                    }
+                }
+            }
+            Console.WriteLine("No new version available.");
+            return false;
+        }
+
     }
     
 }

@@ -77,7 +77,7 @@ namespace vsmodtools
     public class AddModCommand : Command
     {
 
-        public AddModCommand() : base("add", "/add <modid>", "Adds a new mod to the solution")
+        public AddModCommand() : base("add", "add <modid>", "Adds a new mod to the solution")
         {
 
         }
@@ -191,7 +191,7 @@ namespace vsmodtools
     public class DeleteModCommand : Command
     {
 
-        public DeleteModCommand() : base("delete", "/delete <modid>", "Deletes a mod (irreversible)")
+        public DeleteModCommand() : base("delete", "delete <modid>", "Deletes a mod (irreversible)")
         {
 
         }
@@ -281,7 +281,7 @@ namespace vsmodtools
     public class ExistModCommand : Command
     {
 
-        public ExistModCommand() : base("exists", "/exists <modid>", "Checks whether a mod exists or not")
+        public ExistModCommand() : base("check", "check <modid>", "Checks whether a mod exists or not")
         {
 
         }
@@ -345,7 +345,7 @@ namespace vsmodtools
     public class PackModCommand : Command
     {
 
-        public PackModCommand() : base("pack", "/pack <modid>", "Packs a mod of the solution into '/Releases/<modid>/")
+        public PackModCommand() : base("pack", "pack <modid>", "Packs a mod of the solution into '/Releases/<modid>/")
         {
 
         }
