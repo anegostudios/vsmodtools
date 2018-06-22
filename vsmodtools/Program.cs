@@ -135,7 +135,14 @@ namespace vsmodtools
                 if (!inQuote && parmChars[index] == ' ')
                     parmChars[index] = '\n';
             }
-            return (new string(parmChars)).Split('\n');
+            string[] result = (new string(parmChars)).Split('\n');
+            for(int i = 0; i < result.Length; i++)
+            {
+                var line = result[i];
+                if (line.StartsWith("\"") && line.EndsWith("\""))
+                    result[i] = line.Substring(1, line.Length - 2);
+            }
+            return result;
         }
     }
 

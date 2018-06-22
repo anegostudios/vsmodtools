@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,6 +16,7 @@ namespace vsmodtools
 
         public static void Init()
         {
+            Program.RegisterCommand(new SetupCommand());
             Program.RegisterCommand(new AddModCommand());
             Program.RegisterCommand(new PackModCommand());
             Program.RegisterCommand(new ExistModCommand());
@@ -23,9 +25,14 @@ namespace vsmodtools
             Program.RegisterCommand(new DeleteModCommand());
         }
 
+        public static string GetApplicationDirectory()
+        {
+            return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + Path.DirectorySeparatorChar;
+        }
+
         public static string GetModDirectory()
         {
-            return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + Path.DirectorySeparatorChar + "mods" + Path.DirectorySeparatorChar;
+            return GetApplicationDirectory() + "mods" + Path.DirectorySeparatorChar;
         }
 
         public static string GetModPath(string modid)
@@ -74,7 +81,193 @@ namespace vsmodtools
 
     }
 
-    public class AddModCommand : Command
+    public class SetupCommand : Command
+    {
+
+        public SetupCommand() : base("setup", "setup [optional path]", "Updates VintageStory paths.")
+        {
+
+        }
+
+        public static bool CheckPath(string path)
+        {
+            if (path.Contains("$(AppData)"))
+                path = path.Replace("$(AppData)", Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+
+            Console.WriteLine("Searching for VS in \"{0}\" ... ", path);
+
+            if (File.Exists(path + Path.DirectorySeparatorChar + "VintagestoryAPI.dll"))
+            {
+                //Loading VintageStoryAPI.dll
+                Assembly apiDLL = Assembly.LoadFile(path + Path.DirectorySeparatorChar + "VintagestoryAPI.dll");
+                Type gameVersionClass = apiDLL.GetType("Vintagestory.API.Config.GameVersion");
+
+                FieldInfo shortGameVersion = gameVersionClass.GetField("ShortGameVersion");
+                string gameVersion = (string)shortGameVersion.GetValue(null);
+
+                Console.WriteLine("VintageStory v{0} detected!", gameVersion);
+
+                string newestVersion = null;
+                try
+                {
+                    using (var wc = new System.Net.WebClient())
+                    {
+                        newestVersion = wc.DownloadString("http://api.vintagestory.at/lateststable.txt");
+                    }
+                }
+                catch (Exception)
+                {
+                    newestVersion = null;
+                }
+
+                bool requiresUpdate = (bool)gameVersionClass.GetMethod("IsNewerVersionThan", new Type[] { typeof(string), typeof(string) }).Invoke(null, new object[] { newestVersion, gameVersion });
+                if (requiresUpdate)
+                {
+                    ConsoleColor before = Console.ForegroundColor;
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Outdated VintageStory version detected. New version v{0} available!", newestVersion);
+                    Console.ForegroundColor = before;
+                    Console.WriteLine("Continuing anyway ...");
+                }
+                else
+                    Console.WriteLine("VintageStory is up-to-date!");
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public override bool Run(string[] args)
+        {
+            Console.WriteLine("Setting up workspace ...");
+            List<string> possiblePaths = new List<string>();
+
+            if (args.Length == 1)
+            {
+                possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vintagestory"));
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    Console.WriteLine("Detecting Linux ...");
+
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Vintagestory"));
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    Console.WriteLine("Detecting MacOS ...");
+
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Vintagestory"));
+                }
+                else
+                {
+                    Console.WriteLine("Detecting Windows ...");
+
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFiles), "Vintagestory"));
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86), "Vintagestory"));
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Vintagestory"));
+                }
+            }
+            else
+                possiblePaths.Add(args[1]);
+
+            string vspath = null;
+
+            foreach (var path in possiblePaths)
+            {
+                if (CheckPath(path))
+                {
+                    vspath = path;
+                    break;
+                }
+            }
+
+            if (vspath == null)
+            {
+                Console.WriteLine("Could not find VintageStory!");
+                Console.Write("Please enter the installtion path: ");
+                vspath = Console.ReadLine();
+
+                if (!CheckPath(vspath))
+                    return false;
+            }
+
+            vspath = vspath.Replace(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "$(AppData)");
+            if (!vspath.EndsWith("" + Path.DirectorySeparatorChar))
+                vspath += Path.DirectorySeparatorChar;
+
+            Console.WriteLine("\nGenerating path cache file ...");
+            string tempFile = Tools.GetApplicationDirectory() + "modtools.temp";
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+            File.WriteAllText(tempFile, vspath);
+
+            Console.WriteLine("\nStarting to inject paths patches ...");
+
+            vspath = vspath.Replace('/', '\\');
+
+            new Patcher(new LinePatch("<StartProgram>", "<StartProgram>" + vspath + "Vintagestory.exe</StartProgram>"),
+                new LinePatch("<StartWorkingDirectory>", "<StartWorkingDirectory>" + vspath + "</StartWorkingDirectory>"),
+                new LinePatch("<ReferencePath>", "<ReferencePath>" + vspath + ";" + vspath + "Lib\\</ReferencePath>")
+            ).Patch(Tools.GetApplicationDirectory() + "VSModLauncher.csproj.user");
+
+            new Patcher(new ConditionedLinePatch("<Reference Include=\"protobuf-net\">", "<HintPath>", "<HintPath>" + vspath + "Lib\\protobuf-net.dll</HintPath>", "</Reference>"),
+                new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"),
+                new ConditionedLinePatch("<Reference Include=\"VSSurvivalMod\">", "<HintPath>", "<HintPath>" + vspath + "Mods\\VSSurvivalMod.dll</HintPath>", "</Reference>"),
+                new InBetweenPatch("<PostBuildEvent>", "</PostBuildEvent>", "copy \"$(TargetPath)\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "\"", "copy \"$(TargetDir)\\$(TargetName).pdb\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "\"")
+            ).Patch(Tools.GetApplicationDirectory() + "VSModLauncher.csproj");
+
+            Patcher modProjectFilePatcher = new Patcher(new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI\">", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"));
+            string directory = Tools.GetModDirectory();
+            if (Directory.Exists(directory))
+            {
+                foreach (var mod in Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly))
+                {
+                    string modid = mod.Replace(directory, "");
+                    if (File.Exists(mod + modid + ".csproj"))
+                        modProjectFilePatcher.Patch(mod + modid + ".csproj");
+                }
+            }
+
+            Console.WriteLine("Setup complete!");
+            return true;
+        }
+    }
+
+    public abstract class VSCommand : Command
+    {
+        public VSCommand(string name, string syntax, string description) : base(name, syntax, description)
+        {
+        }
+
+        public VSCommand(string name, string description) : base(name, description)
+        {
+        }
+
+        public override bool Run(string[] args)
+        {
+            Console.WriteLine("== Loading VintageStory ==");
+            string tempFile = Tools.GetApplicationDirectory() + "modtools.temp";
+            if (File.Exists(tempFile))
+            {
+                string vspath = File.ReadAllText(tempFile);
+                if (SetupCommand.CheckPath(vspath))
+                {
+                    Console.WriteLine("\n== Running Task ==");
+                    return Run(args, vspath);
+                }
+                Console.WriteLine("Path=\"{0}\" is not available anymore. Please setup your workspace again!");
+            }
+            else
+                Console.WriteLine("Please type in \"setup [optional:path]\" to setup the workspace first!");
+
+            return false;
+        }
+
+        public abstract bool Run(string[] args, string vspath);
+    }
+
+    public class AddModCommand : VSCommand
     {
 
         public AddModCommand() : base("add", "add <modid>", "Adds a new mod to the solution")
@@ -82,7 +275,7 @@ namespace vsmodtools
 
         }
 
-        public override bool Run(string[] args)
+        public override bool Run(string[] args, string vspath)
         {
             if (args.Length <= 1)
             {
@@ -108,6 +301,7 @@ namespace vsmodtools
             Dictionary<string, string> variables = new Dictionary<string, string>();
             variables.Add("$(modid)", modid);
             variables.Add("$(gameversion)", "1.5.3");
+            variables.Add("$(vspath)", vspath);
 
             string projectfile = folder + modid + ".csproj";
 
@@ -116,7 +310,6 @@ namespace vsmodtools
                 Console.WriteLine("This mod exists already!");
                 return false;
             }
-
             File.WriteAllLines(projectfile, Tools.ReadLines("vsmodtools.project.template", variables));
             File.WriteAllLines(folder + "modinfo.json", Tools.ReadLines("vsmodtools.modinfo.template", variables));
             Directory.CreateDirectory(folder + "src");
@@ -161,11 +354,11 @@ namespace vsmodtools
                         {
 
                             list.InsertRange(i, new string[] { projectID + ".Debug|Any CPU.ActiveCfg = Debug|Any CPU",
-                                            projectID + ".Debug|Any CPU.Build.0 = Debug|Any CPU",
-                                            projectID + ".Release x64|Any CPU.ActiveCfg = Release|Any CPU",
-                                            projectID + ".Release x64|Any CPU.Build.0 = Release|Any CPU",
-                                            projectID + ".Release|Any CPU.ActiveCfg = Release|Any CPU",
-                                            projectID + ".Release|Any CPU.Build.0 = Release|Any CPU}" });
+                                projectID + ".Debug|Any CPU.Build.0 = Debug|Any CPU",
+                                projectID + ".Release x64|Any CPU.ActiveCfg = Release|Any CPU",
+                                projectID + ".Release x64|Any CPU.Build.0 = Release|Any CPU",
+                                projectID + ".Release|Any CPU.ActiveCfg = Release|Any CPU",
+                                projectID + ".Release|Any CPU.Build.0 = Release|Any CPU}" });
                             step = 4;
                             i = list.Count;
                         }
@@ -188,7 +381,7 @@ namespace vsmodtools
 
     }
 
-    public class DeleteModCommand : Command
+    public class DeleteModCommand : VSCommand
     {
 
         public DeleteModCommand() : base("delete", "delete <modid>", "Deletes a mod (irreversible)")
@@ -196,7 +389,7 @@ namespace vsmodtools
 
         }
 
-        public override bool Run(string[] args)
+        public override bool Run(string[] args, string vspath)
         {
             if (args.Length <= 1)
             {
@@ -259,7 +452,7 @@ namespace vsmodtools
                 }
             }
 
-            if(projectID == null)
+            if (projectID == null)
             {
                 Console.WriteLine("Could not find project in solution.");
                 return false;
@@ -278,7 +471,7 @@ namespace vsmodtools
     }
 
 
-    public class ExistModCommand : Command
+    public class ExistModCommand : VSCommand
     {
 
         public ExistModCommand() : base("check", "check <modid>", "Checks whether a mod exists or not")
@@ -286,7 +479,7 @@ namespace vsmodtools
 
         }
 
-        public override bool Run(string[] args)
+        public override bool Run(string[] args, string vspath)
         {
             if (args.Length <= 1)
             {
@@ -311,14 +504,14 @@ namespace vsmodtools
 
     }
 
-    public class ListModCommand : Command
+    public class ListModCommand : VSCommand
     {
         public ListModCommand() : base("list", "lists all available mods")
         {
 
         }
 
-        public override bool Run(string[] args)
+        public override bool Run(string[] args, string vspath)
         {
             List<string> mods = new List<string>();
             string directory = Tools.GetModDirectory();
@@ -342,7 +535,7 @@ namespace vsmodtools
         }
     }
 
-    public class PackModCommand : Command
+    public class PackModCommand : VSCommand
     {
 
         public PackModCommand() : base("pack", "pack <modid>", "Packs a mod of the solution into '/Releases/<modid>/")
@@ -350,7 +543,7 @@ namespace vsmodtools
 
         }
 
-        public override bool Run(string[] args)
+        public override bool Run(string[] args, string vspath)
         {
             if (args.Length <= 1)
             {
@@ -428,7 +621,7 @@ namespace vsmodtools
 
     }
 
-    public class PackAllModCommand : Command
+    public class PackAllModCommand : VSCommand
     {
 
         public PackAllModCommand() : base("pack-all", "Packs all mods of the solution into '/Releases/<modid>/")
@@ -436,7 +629,7 @@ namespace vsmodtools
 
         }
 
-        public override bool Run(string[] args)
+        public override bool Run(string[] args, string vspath)
         {
             List<string> mods = new List<string>();
             string directory = Tools.GetModDirectory();
