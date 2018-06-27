@@ -185,7 +185,7 @@ namespace vsmodtools
                     string toAdd = InsertLines[i];
                     if (i == InsertLines.Length - 1)
                         toAdd += End;
-                    lines.Add(toAdd);
+                    lines.Insert(startLine + 1, toAdd);
                 }
 
                 return true;
