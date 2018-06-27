@@ -146,11 +146,12 @@ namespace vsmodtools
             if (args.Length == 1)
             {
                 possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vintagestory"));
-
+                
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
                     Console.WriteLine("Detecting Linux ...");
 
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ApplicationData", "Vintagestory"));
                     possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Vintagestory"));
                 }
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -211,10 +212,16 @@ namespace vsmodtools
                 new LinePatch("<ReferencePath>", "<ReferencePath>" + vspath + ";" + vspath + "Lib\\</ReferencePath>")
             ).Patch(Tools.GetApplicationDirectory() + "VSModLauncher.csproj.user");
 
+            string copyCommand = "copy";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                copyCommand = "cp";
+            
+            //also the mod template should be a .net v4.5.2 class library and not a .netcore standard 2 (but this might open up even more issues)
+
             new Patcher(new ConditionedLinePatch("<Reference Include=\"protobuf-net\">", "<HintPath>", "<HintPath>" + vspath + "Lib\\protobuf-net.dll</HintPath>", "</Reference>"),
                 new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"),
                 new ConditionedLinePatch("<Reference Include=\"VSSurvivalMod\">", "<HintPath>", "<HintPath>" + vspath + "Mods\\VSSurvivalMod.dll</HintPath>", "</Reference>"),
-                new InBetweenPatch("<PostBuildEvent>", "</PostBuildEvent>", "copy \"$(TargetPath)\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "\"", "copy \"$(TargetDir)\\$(TargetName).pdb\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "\"")
+                new InBetweenPatch("<PostBuildEvent>", "</PostBuildEvent>", copyCommand + " \"$(TargetPath)\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "Mods\\\"", copyCommand + " \"$(TargetDir)\\$(TargetName).pdb\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "Mods\\\"")
             ).Patch(Tools.GetApplicationDirectory() + "VSModLauncher.csproj");
 
             Patcher modProjectFilePatcher = new Patcher(new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI\">", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"));
@@ -298,10 +305,16 @@ namespace vsmodtools
                 Console.WriteLine("Could not create mod directory.");
                 return false;
             }
-            Dictionary<string, string> variables = new Dictionary<string, string>();
-            variables.Add("$(modid)", modid);
-            variables.Add("$(gameversion)", "1.5.3");
-            variables.Add("$(vspath)", vspath);
+
+            string projectID = "{" + Guid.NewGuid().ToString() + "}";
+
+            Dictionary<string, string> variables = new Dictionary<string, string>
+            {
+                { "$(modid)", modid },
+                { "$(gameversion)", "1.5.3" },
+                { "$(vspath)", vspath },
+                { "$(projectguid)", projectID }
+            };
 
             string projectfile = folder + modid + ".csproj";
 
@@ -323,7 +336,7 @@ namespace vsmodtools
                 return false;
             }
 
-            string projectID = "{" + Guid.NewGuid().ToString() + "}";
+            
             List<string> list = new List<string>(File.ReadLines(solutionfile));
             int step = 0;
             for (int i = 0; i < list.Count; i++)
