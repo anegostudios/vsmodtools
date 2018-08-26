@@ -12,7 +12,7 @@ namespace vsmodtools
         internal static List<Command> commands = new List<Command>();
         internal static Command currentCommand;
 
-        public const string version = "1.2";
+        public const string version = "1.3";
 
         static void Init()
         {
