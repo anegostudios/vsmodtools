@@ -551,7 +551,7 @@ namespace vsmodtools
     public class PackModCommand : VSCommand
     {
 
-        public PackModCommand() : base("pack", "pack <modid>", "Packs a mod of the solution into '/Releases/<modid>/")
+        public PackModCommand() : base("pack", "pack <modid>", "Packs a mod of the solution into '/releases/<modid>/")
         {
 
         }
@@ -637,7 +637,7 @@ namespace vsmodtools
     public class PackAllModCommand : VSCommand
     {
 
-        public PackAllModCommand() : base("pack-all", "Packs all mods of the solution into '/Releases/<modid>/")
+        public PackAllModCommand() : base("pack-all", "Packs all mods of the solution into '/releases/<modid>/")
         {
 
         }
