@@ -1,8 +1,9 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using ICSharpCode.SharpZipLib.Core;
+using ICSharpCode.SharpZipLib.Zip;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -605,7 +606,8 @@ namespace vsmodtools
             string zipFilePath = releaseFolder + modid + "_v" + version + ".zip";
             if (File.Exists(zipFilePath))
                 File.Delete(zipFilePath);
-            ZipArchive archive = ZipFile.Open(zipFilePath, ZipArchiveMode.Create);
+            ZipOutputStream archive = new ZipOutputStream(File.Create(zipFilePath));
+            archive.SetLevel(3);
             List<string> files = new List<string>();
             files.AddRange(Directory.GetFiles(modFolder, "*.dll", SearchOption.TopDirectoryOnly));
             files.AddRange(Directory.GetFiles(modFolder + "assets", "*", SearchOption.AllDirectories));
@@ -620,12 +622,26 @@ namespace vsmodtools
             Console.WriteLine("Creating zip archive ...");
             foreach (var file in files)
             {
-                string filename = file.Replace(modFolder, "").ToLower();
+                string filename = ZipEntry.CleanName(file.Replace(modFolder, "").ToLower());
                 Console.WriteLine("Adding '{0}' ...", filename);
-                archive.CreateEntryFromFile(file, filename);
+
+                FileInfo fi = new FileInfo(file);
+                ZipEntry newEntry = new ZipEntry(filename);
+                newEntry.DateTime = fi.LastWriteTime;
+                newEntry.Size = fi.Length;
+
+                archive.PutNextEntry(newEntry);
+
+                byte[] buffer = new byte[4096];
+                using (FileStream streamReader = File.OpenRead(file))
+                {
+                    StreamUtils.Copy(streamReader, archive, buffer);
+                }
+                archive.CloseEntry();
             }
 
-            archive.Dispose();
+            archive.IsStreamOwner = true;
+            archive.Close();
 
             Console.WriteLine("Release of '{0}' has been created successfully in '/releases/" + modid + "/" + modid + "_v" + version + ".zip'", modid);
             return true;
