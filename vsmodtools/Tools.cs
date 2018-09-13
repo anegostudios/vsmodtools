@@ -153,6 +153,7 @@ namespace vsmodtools
                     Console.WriteLine("Detecting Linux ...");
 
                     possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ApplicationData", "Vintagestory"));
+                    possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ApplicationData", "vintagestory"));
                     possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Vintagestory"));
                 }
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
