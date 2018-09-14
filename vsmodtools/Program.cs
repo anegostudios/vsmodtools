@@ -12,7 +12,7 @@ namespace vsmodtools
         internal static List<Command> commands = new List<Command>();
         internal static Command currentCommand;
 
-        public const string version = "1.3.2";
+        public const string version = "1.3.3";
 
         static void Init()
         {
@@ -47,7 +47,7 @@ namespace vsmodtools
                     {
                         ConsoleColor before = Console.ForegroundColor;
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("New update available. Please type in 'update' to get started!");
+                        Console.WriteLine("New update available. Please type in 'install-update' to get started!");
                         Console.ForegroundColor = before;
                         return true;
                     }
@@ -211,7 +211,7 @@ namespace vsmodtools
     class UpdateCommand : Command
     {
 
-        public UpdateCommand() : base("update", "Opens a website to download the update if available")
+        public UpdateCommand() : base("install-update", "Opens a website to download the update if available")
         {
 
         }
