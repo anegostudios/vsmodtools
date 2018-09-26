@@ -49,18 +49,22 @@
 
     <Reference Include="VintagestoryAPI">
       <HintPath>$(vspath)VintagestoryAPI.dll</HintPath>
+      <Private>False</Private>
     </Reference>
 
     <Reference Include="VSSurvivalMod">
       <HintPath>$(vspath)Mods\VSSurvivalMod.dll</HintPath>
+      <Private>False</Private>
     </Reference>
 
     <Reference Include="VSEssentials">
       <HintPath>$(vspath)Mods\VSEssentials.dll</HintPath>
+      <Private>False</Private>
     </Reference>
 
     <Reference Include="VSCreativeMod">
       <HintPath>$(vspath)Mods\VSCreativeMod.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     
   </ItemGroup>
