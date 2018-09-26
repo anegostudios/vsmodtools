@@ -345,6 +345,7 @@ namespace vsmodtools
             
             List<string> list = new List<string>(File.ReadLines(solutionfile));
             int step = 0;
+            string launcherGUID = "";
             for (int i = 0; i < list.Count; i++)
             {
                 var line = list[i];
@@ -352,23 +353,45 @@ namespace vsmodtools
                 {
                     case 0:
                         if (line.Contains("\"VSModLauncher.csproj\""))
+                        {
+                            string[] parts = line.Split('"');
+                            if (parts.Length < 8)
+                                Console.WriteLine("Something went wrong: " + parts + " line: " + line);
+                            if (parts[3].Equals("VSModLauncher", StringComparison.OrdinalIgnoreCase) && parts[5].Equals("VSModLauncher.csproj", StringComparison.OrdinalIgnoreCase))
+                                launcherGUID = parts[7];
                             step = 1;
+                        }
                         break;
                     case 1:
+                        if (Patch.StartsWith(line, "ProjectSection(ProjectDependencies) = postProject"))
+                        {
+                            list.Insert(i + 1, "		" + projectID + " = " + projectID + "");
+                            step = 2;
+                        }
+                        else if (Patch.StartsWith(line, "EndProject"))
+                        {
+                            list.Insert(i, "	EndProjectSection");
+                            list.Insert(i, "		" + projectID + " = " + projectID + "");
+                            list.Insert(i, "	ProjectSection(ProjectDependencies) = postProject");
+                            i--;
+                            step = 2;
+                        }
+                        break;
+                    case 2:
                         if (line.Replace(" ", "").Equals("EndProject", StringComparison.OrdinalIgnoreCase))
                         {
                             i++;
                             list.Insert(i, "EndProject");
                             list.Insert(i, "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"" + modid + "\", \"mods" + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj\", \"" + projectID + "\"");
                             i++;
-                            step = 2;
+                            step = 3;
                         }
                         break;
-                    case 2:
-                        if (line.Replace(" ", "").Contains("GlobalSection(ProjectConfigurationPlatforms)=postSolution"))
-                            step = 3;
-                        break;
                     case 3:
+                        if (line.Replace(" ", "").Contains("GlobalSection(ProjectConfigurationPlatforms)=postSolution"))
+                            step = 4;
+                        break;
+                    case 4:
                         if (line.Contains("EndGlobalSection"))
                         {
 
@@ -378,14 +401,14 @@ namespace vsmodtools
                                 projectID + ".Release x64|Any CPU.Build.0 = Release|Any CPU",
                                 projectID + ".Release|Any CPU.ActiveCfg = Release|Any CPU",
                                 projectID + ".Release|Any CPU.Build.0 = Release|Any CPU}" });
-                            step = 4;
+                            step = 5;
                             i = list.Count;
                         }
                         break;
                 }
             }
 
-            if (step < 4)
+            if (step < 5)
                 Console.WriteLine("Something went wrong, could not complete solution injection (" + step + ")");
             else
             {
@@ -433,6 +456,7 @@ namespace vsmodtools
 
             List<string> list = new List<string>(File.ReadLines(solutionfile));
             string projectID = null;
+            bool dependencies = false;
             for (int i = 0; i < list.Count; i++)
             {
                 var line = list[i];
@@ -445,12 +469,68 @@ namespace vsmodtools
                     {
                         projectID = parts[7];
                         list[i] = line.Replace("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}", "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}");
-                        break;
+                    }
+                }
+                else if (projectID != null)
+                {
+                    if (dependencies)
+                    {
+                        list.RemoveAt(i);
+                        i--;
+                        if (Patch.StartsWith(line, "EndProjectSection"))
+                            break;
+                    }
+                    else if (Patch.StartsWith(line, "ProjectSection(ProjectDependencies) = postProject"))
+                    {
+                        list.RemoveAt(i);
+                        i--;
+                        dependencies = true;
                     }
                 }
             }
 
-            if(projectID == null)
+            int step = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var line = list[i];
+                switch (step)
+                {
+                    case 0:
+                        if (Patch.StartsWith(line, "Project("))
+                        {
+                            string[] parts = line.Split('"');
+                            if (parts.Length < 8)
+                                Console.WriteLine("Something went wrong: " + parts + " line: " + line);
+                            if (parts[3].Equals("VSModLauncher", StringComparison.OrdinalIgnoreCase) && parts[5].Equals("VSModLauncher.csproj", StringComparison.OrdinalIgnoreCase))
+                                step = 1;
+                        }
+                        break;
+                    case 1:
+                        if (Patch.StartsWith(line, "ProjectSection(ProjectDependencies) = postProject"))
+                            step = 2;
+                        else if (Patch.StartsWith(line, "EndProject"))
+                        {
+                            list.Insert(i, "	EndProjectSection");
+                            list.Insert(i, "		" + projectID + " = " + projectID + "");
+                            list.Insert(i, "	ProjectSection(ProjectDependencies) = postProject");
+                            step = 3;
+                        }
+                        break;
+                    case 2:
+                        if(Patch.StartsWith(line, projectID))
+                            step = 3;
+                        else if(Patch.StartsWith(line, "EndProjectSection"))
+                        {
+                            list.Insert(i, "		" + projectID + " = " + projectID + "");
+                            step = 3;
+                        }
+                        break;
+                }
+                if (step == 3)
+                    break;
+            }
+
+            if (projectID == null)
             {
                 Console.WriteLine("Could not find project guid!");
                 return false;
@@ -571,19 +651,26 @@ namespace vsmodtools
                     list.RemoveAt(i);
                     i--;
                     if (line.Contains("EndProject"))
-                        insideProject = false;
-                }
-                else if (projectID != null && line.Contains(projectID))
-                {
-                    list.RemoveAt(i);
-                    i--;
+                        break;
                 }
             }
+
+            
 
             if (projectID == null)
             {
                 Console.WriteLine("Could not find project in solution.");
                 return false;
+            }
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                var line = list[i];
+                if (line.Contains(projectID))
+                {
+                    list.RemoveAt(i);
+                    i--;
+                }
             }
 
             File.WriteAllLines(solutionfile, list);
