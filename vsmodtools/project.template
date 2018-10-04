@@ -16,7 +16,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>..\..\bin\Debug\$(modid)\</OutputPath>
+    <OutputPath>$(binpathdebug)</OutputPath>
     <IntermediateOutputPath>..\..\obj\Debug\$(modid)\</IntermediateOutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
@@ -25,7 +25,7 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>..\..\bin\Release\$(modid)\</OutputPath>
+    <OutputPath>$(binpathrelease)</OutputPath>
     <IntermediateOutputPath>..\..\obj\Release\$(modid)\</IntermediateOutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
@@ -69,11 +69,8 @@
     
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="assets\" />
     $(AssetFiles)
-    <Folder Include="src\" />
     $(SrcFiles)
-    <Content Include="modinfo.json" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

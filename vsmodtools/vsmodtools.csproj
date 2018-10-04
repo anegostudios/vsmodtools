@@ -84,6 +84,7 @@
     <EmbeddedResource Include="project.template">
       <SubType>Designer</SubType>
     </EmbeddedResource>
+    <EmbeddedResource Include="assemblyinfo.template" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

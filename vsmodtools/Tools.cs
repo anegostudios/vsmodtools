@@ -19,6 +19,7 @@ namespace vsmodtools
         {
             Program.RegisterCommand(new SetupCommand());
             Program.RegisterCommand(new AddModCommand());
+            Program.RegisterCommand(new AddDLLModCommand());
             Program.RegisterCommand(new PackModCommand());
             Program.RegisterCommand(new ExistModCommand());
             Program.RegisterCommand(new ListModCommand());
@@ -45,7 +46,7 @@ namespace vsmodtools
 
         public static bool DoesModExist(string modid)
         {
-            return File.Exists(GetModPath(modid) + "modinfo.json");
+            return File.Exists(GetModPath(modid) + modid + ".csproj");
         }
 
         public static bool IsValidModID(string str)
@@ -286,6 +287,23 @@ namespace vsmodtools
 
         }
 
+        public AddModCommand(string name, string syntax, string description) : base(name, syntax, description)
+        {
+
+        }
+
+        public virtual void ModifyVariables(Dictionary<string, string> variables)
+        {
+
+        }
+
+        public virtual void CreateProjectFiles(string folder, Dictionary<string, string> variables)
+        {
+            File.WriteAllLines(folder + "modinfo.json", Tools.ReadLines("vsmodtools.modinfo.template", variables));
+            Directory.CreateDirectory(folder + "src");
+            Directory.CreateDirectory(folder + "assets");
+        }
+
         public override bool Run(string[] args, string vspath)
         {
             if (args.Length <= 1)
@@ -318,9 +336,14 @@ namespace vsmodtools
                 { "$(gameversion)", "1.5.3" },
                 { "$(vspath)", vspath },
                 { "$(projectguid)", projectID },
-                { "$(AssetFiles)", "" },
-                { "$(SrcFiles)", "" }
+                { "$(projectguidwithout)", projectID.Replace("{", "").Replace("}", "") },
+                { "$(AssetFiles)", "<Folder Include=\"assets\\\" />" },
+                { "$(SrcFiles)", "<Folder Include=\"src\\\" />\n    <Content Include=\"modinfo.json\" />" },
+                { "$(binpathdebug)", "..\\..\\bin\\Debug\\" + modid + "\\" },
+                { "$(binpathrelease)", "..\\..\\bin\\Release\\" + modid + "\\" }
             };
+
+            ModifyVariables(variables);
 
             string projectfile = folder + modid + ".csproj";
 
@@ -330,9 +353,9 @@ namespace vsmodtools
                 return false;
             }
             File.WriteAllLines(projectfile, Tools.ReadLines("vsmodtools.project.template", variables));
-            File.WriteAllLines(folder + "modinfo.json", Tools.ReadLines("vsmodtools.modinfo.template", variables));
-            Directory.CreateDirectory(folder + "src");
-            Directory.CreateDirectory(folder + "assets");
+
+            CreateProjectFiles(folder, variables);
+
             Console.WriteLine("Created " + modid + " successfully ...");
 
             string solutionfile = Path.GetDirectoryName(assembly.Location) + Path.DirectorySeparatorChar + "VSMods.sln";
@@ -419,6 +442,31 @@ namespace vsmodtools
 
 
             return false;
+        }
+
+    }
+
+    public class AddDLLModCommand : AddModCommand
+    {
+
+        public AddDLLModCommand() : base("add-dll", "add-dll <modid>", "Adds a new dll mod to the solution")
+        {
+
+        }
+
+        public override void ModifyVariables(Dictionary<string, string> variables)
+        {
+            base.ModifyVariables(variables);
+            variables["$(binpathdebug)"] = "..\\";
+            variables["$(binpathrelease)"] = "..\\";
+            variables["$(AssetFiles)"] = "";
+            variables["$(SrcFiles)"] = "<Compile Include=\"Properties\\AssemblyInfo.cs\" />";
+        }
+
+        public override void CreateProjectFiles(string folder, Dictionary<string, string> variables)
+        {
+            Directory.CreateDirectory(folder + Path.DirectorySeparatorChar + "Properties" + Path.DirectorySeparatorChar);
+            File.WriteAllLines(folder + Path.DirectorySeparatorChar + "Properties" + Path.DirectorySeparatorChar + "AssemblyInfo.cs", Tools.ReadLines("vsmodtools.assemblyinfo.template", variables));
         }
 
     }
@@ -539,21 +587,21 @@ namespace vsmodtools
             File.WriteAllLines(solutionfile, list);
             Console.WriteLine("Successfully updated solution ...");
 
-            string assetFiles = "";
+            string assetFiles = "<Folder Include=\"assets\\\" />";
             foreach(var file in Directory.GetFiles(Path.Combine(folder, "assets"), "*", SearchOption.AllDirectories))
             {
                 assetFiles += "<Content Include=\"" + file.Replace(folder, "") + "\" />\n";
             }
 
-            string srcFiles = "";
+            string srcFiles = "<Folder Include=\"src\\\" />\n    <Content Include=\"modinfo.json\" />";
             foreach (var file in Directory.GetFiles(Path.Combine(folder, "src"), "*.cs", SearchOption.AllDirectories))
             {
-                srcFiles += "<Content Include=\"" + file.Replace(folder, "") + "\" />\n";
+                srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
             }
 
             foreach (var file in Directory.GetFiles(Path.Combine(folder, "src"), "*.dll", SearchOption.TopDirectoryOnly))
             {
-                srcFiles += "<Content Include=\"" + file.Replace(folder, "") + "\" />\n";
+                srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
             }
 
             Dictionary<string, string> variables = new Dictionary<string, string>
@@ -563,7 +611,9 @@ namespace vsmodtools
                 { "$(vspath)", vspath },
                 { "$(projectguid)", projectID },
                 { "$(AssetFiles)", assetFiles },
-                { "$(SrcFiles)", srcFiles }
+                { "$(SrcFiles)", srcFiles },
+                { "$(binpathdebug)", "..\\..\\bin\\Debug\\" + modid + "\\" },
+                { "$(binpathrelease)", "..\\..\\bin\\Release\\" + modid + "\\" }
             };
 
             string projectfile = folder + modid + ".csproj";
@@ -679,6 +729,18 @@ namespace vsmodtools
             string path = Tools.GetModPath(modid);
             Directory.Delete(path, true);
             Console.WriteLine("Deleted '{0}' ...", path);
+
+            if (File.Exists(Tools.GetModDirectory() + modid + ".dll"))
+            {
+                File.Delete(Tools.GetModDirectory() + modid + ".dll");
+                Console.WriteLine("Deleted '{0}' ...", modid + ".dll");
+            }
+
+            if (File.Exists(Tools.GetModDirectory() + modid + ".pdb"))
+            {
+                File.Delete(Tools.GetModDirectory() + modid + ".pdb");
+                Console.WriteLine("Deleted '{0}' ...", modid + ".pdb");
+            }
 
             Console.WriteLine("'{0}' has been deleted.", modid);
             return true;
