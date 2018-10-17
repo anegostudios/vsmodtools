@@ -39,14 +39,31 @@ namespace vsmodtools
             return GetApplicationDirectory() + "mods" + Path.DirectorySeparatorChar;
         }
 
-        public static string GetModPath(string modid)
+        public static string GetDLLModDirectory()
         {
+            return GetApplicationDirectory() + "mods-dll" + Path.DirectorySeparatorChar;
+        }
+
+        public static string GetModPath(string modid, bool dll)
+        {
+            if(dll)
+                return GetDLLModDirectory() + modid + Path.DirectorySeparatorChar;
             return GetModDirectory() + modid + Path.DirectorySeparatorChar;
         }
 
-        public static bool DoesModExist(string modid)
+        public static bool IsDLLMod(string modid)
         {
-            return File.Exists(GetModPath(modid) + modid + ".csproj");
+            return !File.Exists(GetModPath(modid, false) + modid + ".csproj");
+        }
+
+        public static bool DoesModExist(string modid, bool dll)
+        {
+            return File.Exists(GetModPath(modid, dll) + modid + ".csproj");
+        }
+
+        public static Tuple<string, bool>[] GetModPaths()
+        {
+            return new Tuple<string, bool>[] { Tuple.Create<string, bool>(Tools.GetModDirectory(), false), Tuple.Create<string, bool>(Tools.GetDLLModDirectory(), true) };
         }
 
         public static bool IsValidModID(string str)
@@ -230,14 +247,16 @@ namespace vsmodtools
             ).Patch(Tools.GetApplicationDirectory() + "VSModLauncher.csproj");
 
             Patcher modProjectFilePatcher = new Patcher(new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI\">", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"));
-            string directory = Tools.GetModDirectory();
-            if (Directory.Exists(directory))
+            foreach (var directory in Tools.GetModPaths())
             {
-                foreach (var mod in Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly))
+                if (Directory.Exists(directory.Item1))
                 {
-                    string modid = mod.Replace(directory, "");
-                    if (File.Exists(mod + modid + ".csproj"))
-                        modProjectFilePatcher.Patch(mod + modid + ".csproj");
+                    foreach (var mod in Directory.GetDirectories(directory.Item1, "*", SearchOption.TopDirectoryOnly))
+                    {
+                        string modid = mod.Replace(directory.Item1, "");
+                        if (File.Exists(mod + modid + ".csproj"))
+                            modProjectFilePatcher.Patch(mod + modid + ".csproj");
+                    }
                 }
             }
 
@@ -304,6 +323,11 @@ namespace vsmodtools
             Directory.CreateDirectory(folder + "assets");
         }
 
+        public virtual bool IsDLL()
+        {
+            return false;
+        }
+
         public override bool Run(string[] args, string vspath)
         {
             if (args.Length <= 1)
@@ -321,7 +345,7 @@ namespace vsmodtools
 
             Console.WriteLine("'{0}' appears to be a valid modid. Creating new mod ...", modid);
             Assembly assembly = Assembly.GetExecutingAssembly();
-            string folder = Tools.GetModPath(modid);
+            string folder = Tools.GetModPath(modid, IsDLL());
             if (!Directory.CreateDirectory(folder).Exists)
             {
                 Console.WriteLine("Could not create mod directory.");
@@ -405,7 +429,7 @@ namespace vsmodtools
                         {
                             i++;
                             list.Insert(i, "EndProject");
-                            list.Insert(i, "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"" + modid + "\", \"mods" + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj\", \"" + projectID + "\"");
+                            list.Insert(i, "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"" + modid + "\", \"" + (IsDLL() ? "mods-dll" : "mods") + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj\", \"" + projectID + "\"");
                             i++;
                             step = 3;
                         }
@@ -457,8 +481,8 @@ namespace vsmodtools
         public override void ModifyVariables(Dictionary<string, string> variables)
         {
             base.ModifyVariables(variables);
-            variables["$(binpathdebug)"] = "..\\";
-            variables["$(binpathrelease)"] = "..\\";
+            variables["$(binpathdebug)"] = "..\\..\\mods\\";
+            variables["$(binpathrelease)"] = "..\\..\\mods\\";
             variables["$(AssetFiles)"] = "";
             variables["$(SrcFiles)"] = "<Compile Include=\"Properties\\AssemblyInfo.cs\" />";
         }
@@ -469,6 +493,10 @@ namespace vsmodtools
             File.WriteAllLines(folder + Path.DirectorySeparatorChar + "Properties" + Path.DirectorySeparatorChar + "AssemblyInfo.cs", Tools.ReadLines("vsmodtools.assemblyinfo.template", variables));
         }
 
+        public override bool IsDLL()
+        {
+            return true;
+        }
     }
 
     public class UpdateModCommand : VSCommand
@@ -488,13 +516,14 @@ namespace vsmodtools
             }
 
             string modid = args[1];
-            if (!Tools.DoesModExist(modid))
+            bool dll = Tools.IsDLLMod(modid);
+            if (!Tools.DoesModExist(modid, dll))
             {
                 Console.WriteLine("'{0}' does not exist!", modid);
                 return false;
             }
 
-            string folder = Tools.GetModPath(modid);
+            string folder = Tools.GetModPath(modid, dll);
             string solutionfile = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + Path.DirectorySeparatorChar + "VSMods.sln";
             if (!File.Exists(solutionfile))
             {
@@ -513,7 +542,7 @@ namespace vsmodtools
                     string[] parts = line.Split('"');
                     if (parts.Length < 8)
                         Console.WriteLine("Something went wrong: " + parts + " line: " + line);
-                    if (parts[3].Equals(modid, StringComparison.OrdinalIgnoreCase) && parts[5].Equals("mods" + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj", StringComparison.OrdinalIgnoreCase))
+                    if (parts[3].Equals(modid, StringComparison.OrdinalIgnoreCase) && parts[5].Equals((dll ? "mods-dll" : "mods") + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj", StringComparison.OrdinalIgnoreCase))
                     {
                         projectID = parts[7];
                         list[i] = line.Replace("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}", "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}");
@@ -587,21 +616,34 @@ namespace vsmodtools
             File.WriteAllLines(solutionfile, list);
             Console.WriteLine("Successfully updated solution ...");
 
-            string assetFiles = "<Folder Include=\"assets\\\" />";
-            foreach(var file in Directory.GetFiles(Path.Combine(folder, "assets"), "*", SearchOption.AllDirectories))
+            string assetFiles = "";
+            string srcFiles;
+            if (dll)
             {
-                assetFiles += "<Content Include=\"" + file.Replace(folder, "") + "\" />\n";
+                srcFiles = "";
+                foreach (var file in Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories))
+                {
+                    srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
+                }
             }
-
-            string srcFiles = "<Folder Include=\"src\\\" />\n    <Content Include=\"modinfo.json\" />";
-            foreach (var file in Directory.GetFiles(Path.Combine(folder, "src"), "*.cs", SearchOption.AllDirectories))
+            else
             {
-                srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
-            }
+                assetFiles = "<Folder Include=\"assets\\\" />";
+                foreach (var file in Directory.GetFiles(Path.Combine(folder, "assets"), "*", SearchOption.AllDirectories))
+                {
+                    assetFiles += "<Content Include=\"" + file.Replace(folder, "") + "\" />\n";
+                }
 
-            foreach (var file in Directory.GetFiles(Path.Combine(folder, "src"), "*.dll", SearchOption.TopDirectoryOnly))
-            {
-                srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
+                srcFiles = "<Folder Include=\"src\\\" />\n    <Content Include=\"modinfo.json\" />";
+                foreach (var file in Directory.GetFiles(Path.Combine(folder, "src"), "*.cs", SearchOption.AllDirectories))
+                {
+                    srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
+                }
+
+                foreach (var file in Directory.GetFiles(Path.Combine(folder, "src"), "*.dll", SearchOption.TopDirectoryOnly))
+                {
+                    srcFiles += "<Compile Include=\"" + file.Replace(folder, "") + "\" />\n";
+                }
             }
 
             Dictionary<string, string> variables = new Dictionary<string, string>
@@ -615,6 +657,12 @@ namespace vsmodtools
                 { "$(binpathdebug)", "..\\..\\bin\\Debug\\" + modid + "\\" },
                 { "$(binpathrelease)", "..\\..\\bin\\Release\\" + modid + "\\" }
             };
+
+            if (dll)
+            {
+                variables["$(binpathdebug)"] = "..\\..\\mods\\";
+                variables["$(binpathrelease)"] = "..\\..\\mods\\";
+            }
 
             string projectfile = folder + modid + ".csproj";
             File.Delete(projectfile);
@@ -659,7 +707,9 @@ namespace vsmodtools
                 return false;
             }
 
-            if (!Tools.DoesModExist(modid))
+            bool dll = Tools.IsDLLMod(modid);
+
+            if (!Tools.DoesModExist(modid, dll))
             {
                 Console.WriteLine("'{0}' does not exist!", modid);
                 return false;
@@ -689,7 +739,7 @@ namespace vsmodtools
                 if (projectID == null && Patch.StartsWith(line, "Project("))
                 {
                     string[] parts = line.Split('"');
-                    if (parts[3].Equals(modid, StringComparison.OrdinalIgnoreCase) && parts[5].Equals("mods" + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj", StringComparison.OrdinalIgnoreCase))
+                    if (parts[3].Equals(modid, StringComparison.OrdinalIgnoreCase) && parts[5].Equals((dll ? "mods-dll" : "mods") + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar + modid + ".csproj", StringComparison.OrdinalIgnoreCase))
                     {
                         projectID = parts[7];
                         insideProject = true;
@@ -726,7 +776,7 @@ namespace vsmodtools
             File.WriteAllLines(solutionfile, list);
             Console.WriteLine("Successfully removed project from solution ...");
 
-            string path = Tools.GetModPath(modid);
+            string path = Tools.GetModPath(modid, dll);
             Directory.Delete(path, true);
             Console.WriteLine("Deleted '{0}' ...", path);
 
@@ -771,8 +821,10 @@ namespace vsmodtools
                 return false;
             }
 
-            if (Tools.DoesModExist(modid))
-                Console.WriteLine("'{0}' does exist!", modid);
+            bool dll = Tools.IsDLLMod(modid);
+
+            if (Tools.DoesModExist(modid, dll))
+                Console.WriteLine("'{0}' does exist! Modtype: {1}", modid, dll ? "dll" : "folder");
             else
                 Console.WriteLine("'{0}' does not exist!", modid);
 
@@ -791,16 +843,19 @@ namespace vsmodtools
         public override bool Run(string[] args, string vspath)
         {
             List<string> mods = new List<string>();
-            string directory = Tools.GetModDirectory();
-            if (Directory.Exists(directory))
+            foreach (var directory in new string[] { Tools.GetModDirectory(), Tools.GetDLLModDirectory() })
             {
-                foreach (var mod in Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly))
+                if (Directory.Exists(directory))
                 {
-                    string modid = mod.Replace(directory, "");
-                    if (Tools.DoesModExist(modid))
-                        mods.Add(modid);
-                    else
-                        Console.WriteLine("Found invalid directory in mods folder '{0}'", modid);
+                    foreach (var mod in Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly))
+                    {
+                        string modid = mod.Replace(directory, "");
+                        bool dll = Tools.IsDLLMod(modid);
+                        if (Tools.DoesModExist(modid, dll))
+                            mods.Add(modid);
+                        else
+                            Console.WriteLine("Found invalid directory in mods folder '{0}'", modid);
+                    }
                 }
             }
 
@@ -835,13 +890,19 @@ namespace vsmodtools
                 return false;
             }
 
-            if (!Tools.DoesModExist(modid))
+            if(Tools.IsDLLMod(modid) && Tools.DoesModExist(modid, true))
+            {
+                Console.WriteLine("'{0} is a dll mod!");
+                return false;
+            }
+
+            if (!Tools.DoesModExist(modid, false))
             {
                 Console.WriteLine("'{0}' does not exist!", modid);
                 return false;
             }
 
-            string modFolder = Tools.GetModPath(modid);
+            string modFolder = Tools.GetModPath(modid, false);
             Console.WriteLine("Collecting modinfo ...");
             JObject modinfo = JObject.Parse(File.ReadAllText(modFolder + "modinfo.json"));
 
@@ -924,17 +985,18 @@ namespace vsmodtools
         public override bool Run(string[] args, string vspath)
         {
             List<string> mods = new List<string>();
-            string directory = Tools.GetModDirectory();
-
-            if (Directory.Exists(directory))
+            foreach (var directory in Tools.GetModPaths())
             {
-                foreach (var mod in Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly))
+                if (Directory.Exists(directory.Item1))
                 {
-                    string modid = mod.Replace(directory, "");
-                    if (Tools.DoesModExist(modid))
-                        mods.Add(modid);
-                    else
-                        Console.WriteLine("Found invalid directory in mods folder '{0}'", modid);
+                    foreach (var mod in Directory.GetDirectories(directory.Item1, "*", SearchOption.TopDirectoryOnly))
+                    {
+                        string modid = mod.Replace(directory.Item1, "");
+                        if (Tools.DoesModExist(modid, directory.Item2))
+                            mods.Add(modid);
+                        else
+                            Console.WriteLine("Found invalid directory in mods folder '{0}'", modid);
+                    }
                 }
             }
 
@@ -965,13 +1027,12 @@ namespace vsmodtools
         {
             List<string> mods = new List<string>();
             string directory = Tools.GetModDirectory();
-
             if (Directory.Exists(directory))
             {
                 foreach (var mod in Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly))
                 {
                     string modid = mod.Replace(directory, "");
-                    if (Tools.DoesModExist(modid))
+                    if (Tools.DoesModExist(modid, false))
                         mods.Add(modid);
                     else
                         Console.WriteLine("Found invalid directory in mods folder '{0}'", modid);
