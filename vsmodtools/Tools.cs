@@ -21,6 +21,7 @@ namespace vsmodtools
             Program.RegisterCommand(new AddModCommand());
             Program.RegisterCommand(new AddDLLModCommand());
             Program.RegisterCommand(new PackModCommand());
+            Program.RegisterCommand(new PackDllModCommand());
             Program.RegisterCommand(new ExistModCommand());
             Program.RegisterCommand(new ListModCommand());
             Program.RegisterCommand(new PackAllModCommand());
@@ -46,7 +47,7 @@ namespace vsmodtools
 
         public static string GetModPath(string modid, bool dll)
         {
-            if(dll)
+            if (dll)
                 return GetDLLModDirectory() + modid + Path.DirectorySeparatorChar;
             return GetModDirectory() + modid + Path.DirectorySeparatorChar;
         }
@@ -98,6 +99,26 @@ namespace vsmodtools
                     yield return line;
                 }
             }
+        }
+
+        public static void AddFileToZip(ZipOutputStream archive, string file, string zipFileName)
+        {
+            string filename = ZipEntry.CleanName(zipFileName.ToLower());
+            Console.WriteLine("Adding '{0}' ...", filename);
+
+            FileInfo fi = new FileInfo(file);
+            ZipEntry newEntry = new ZipEntry(filename);
+            newEntry.DateTime = fi.LastWriteTime;
+            newEntry.Size = fi.Length;
+
+            archive.PutNextEntry(newEntry);
+
+            byte[] buffer = new byte[4096];
+            using (FileStream streamReader = File.OpenRead(file))
+            {
+                StreamUtils.Copy(streamReader, archive, buffer);
+            }
+            archive.CloseEntry();
         }
 
     }
@@ -167,7 +188,7 @@ namespace vsmodtools
             if (args.Length == 1)
             {
                 possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vintagestory"));
-                
+
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
                     Console.WriteLine("Detecting Linux ...");
@@ -237,7 +258,7 @@ namespace vsmodtools
             string copyCommand = "copy";
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 copyCommand = "cp";
-            
+
             //also the mod template should be a .net v4.5.2 class library and not a .netcore standard 2 (but this might open up even more issues)
 
             new Patcher(new ConditionedLinePatch("<Reference Include=\"protobuf-net\">", "<HintPath>", "<HintPath>" + vspath + "Lib\\protobuf-net.dll</HintPath>", "</Reference>"),
@@ -389,7 +410,7 @@ namespace vsmodtools
                 return false;
             }
 
-            
+
             List<string> list = new List<string>(File.ReadLines(solutionfile));
             int step = 0;
             string launcherGUID = "";
@@ -594,9 +615,9 @@ namespace vsmodtools
                         }
                         break;
                     case 2:
-                        if(Patch.StartsWith(line, projectID))
+                        if (Patch.StartsWith(line, projectID))
                             step = 3;
-                        else if(Patch.StartsWith(line, "EndProjectSection"))
+                        else if (Patch.StartsWith(line, "EndProjectSection"))
                         {
                             list.Insert(i, "		" + projectID + " = " + projectID + "");
                             step = 3;
@@ -755,7 +776,7 @@ namespace vsmodtools
                 }
             }
 
-            
+
 
             if (projectID == null)
             {
@@ -890,7 +911,7 @@ namespace vsmodtools
                 return false;
             }
 
-            if(Tools.IsDLLMod(modid) && Tools.DoesModExist(modid, true))
+            if (Tools.IsDLLMod(modid) && Tools.DoesModExist(modid, true))
             {
                 Console.WriteLine("'{0} is a dll mod!");
                 return false;
@@ -945,24 +966,7 @@ namespace vsmodtools
 
             Console.WriteLine("Creating zip archive ...");
             foreach (var file in files)
-            {
-                string filename = ZipEntry.CleanName(file.Replace(modFolder, "").ToLower());
-                Console.WriteLine("Adding '{0}' ...", filename);
-
-                FileInfo fi = new FileInfo(file);
-                ZipEntry newEntry = new ZipEntry(filename);
-                newEntry.DateTime = fi.LastWriteTime;
-                newEntry.Size = fi.Length;
-
-                archive.PutNextEntry(newEntry);
-
-                byte[] buffer = new byte[4096];
-                using (FileStream streamReader = File.OpenRead(file))
-                {
-                    StreamUtils.Copy(streamReader, archive, buffer);
-                }
-                archive.CloseEntry();
-            }
+                Tools.AddFileToZip(archive, file, file.Replace(modFolder, ""));
 
             archive.IsStreamOwner = true;
             archive.Close();
@@ -972,6 +976,163 @@ namespace vsmodtools
 
         }
 
+    }
+
+    public class PackDllModCommand : VSCommand
+    {
+        public PackDllModCommand() : base("pack-dll", "pack-dll <modid>", "Packs a zip mod with compiled dll (instead of the src folder) to '/releases/<modid>/")
+        {
+
+        }
+
+        public override bool Run(string[] args, string vspath)
+        {
+            if (args.Length <= 1)
+            {
+                Console.WriteLine("Missing modid!");
+                return false;
+            }
+
+            string modid = args[1];
+            if (!Tools.IsValidModID(modid))
+            {
+                Console.WriteLine("'{0}' is not a valid modid!", modid);
+                return false;
+            }
+
+            if (Tools.IsDLLMod(modid) && Tools.DoesModExist(modid, true))
+            {
+                Console.WriteLine("'{0} is a dll mod!");
+                return false;
+            }
+
+            if (!Tools.DoesModExist(modid, false))
+            {
+                Console.WriteLine("'{0}' does not exist!", modid);
+                return false;
+            }
+
+            // Check for compiled dll date
+            DateTime time = DateTime.MinValue;
+            string selectedFile = "";
+            string[] dllFiles = new string[] { Path.Combine(Tools.GetApplicationDirectory(), "bin", "Debug", modid, modid + ".dll"), Path.Combine(Tools.GetApplicationDirectory(), "bin", "Release", modid, modid + ".dll") };
+            foreach (var file in dllFiles)
+            {
+                Console.WriteLine("Searching for compiled dll '{0}' ...", file);
+                DateTime fileTime = File.GetLastWriteTime(file);
+                if (DateTime.Compare(time, fileTime) < 0)
+                {
+                    time = fileTime;
+                    selectedFile = file;
+                }
+            }
+
+            if (selectedFile == "")
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Could not find compiled dll!");
+                Console.ForegroundColor = ConsoleColor.White;
+                return false;
+            }
+
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("Don't forget to compile your mod first!");
+
+
+            TimeSpan span = DateTime.Now - time;
+            if (span.TotalSeconds > 90)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                string output = "";
+                if (span.Days > 0)
+                    output += span.Days + " d ";
+                if (span.Hours > 0)
+                    output += span.Hours + " h ";
+                if (span.Minutes > 0)
+                    output += span.Minutes + " min ";
+                if (span.Seconds > 0)
+                    output += span.Seconds + " s";
+                Console.WriteLine("Your compiled dll seems to be outdated: " + output);
+                Console.WriteLine("It's recommend to compile your mod first");
+                Console.ForegroundColor = ConsoleColor.White;
+                ConsoleKeyInfo key;
+                bool check;
+                do
+                {
+                    Console.WriteLine("Do you want to compile your mod anyway? [y/n]");
+                    key = Console.ReadKey(true);
+                    check = !((key.Key == ConsoleKey.Y) || (key.Key == ConsoleKey.N));
+                } while (check);
+                switch (key.Key)
+                {
+                    case ConsoleKey.Y:
+                        Console.WriteLine("Continuing");
+                        break;
+                    case ConsoleKey.N:
+                        Console.WriteLine("Abort");
+                        return false;
+                }
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGreen;
+                Console.WriteLine("Dll compiled {0} seconds ago", (int) span.TotalSeconds);
+                Console.ForegroundColor = ConsoleColor.White;
+            }
+
+            // Creating zip
+            string modFolder = Tools.GetModPath(modid, false);
+            Console.WriteLine("Collecting modinfo ...");
+            JObject modinfo = JObject.Parse(File.ReadAllText(modFolder + "modinfo.json"));
+
+            if (modinfo.Property("modid") == null)
+                modinfo.Add("modid", JToken.FromObject(modid));
+
+            if (!modinfo["modid"].ToString().Equals(modid, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("Modid mismatch in 'modinfo.json'!");
+                return false;
+            }
+
+            string version = modinfo.ContainsKey("version") ? modinfo["version"].ToString() : "1.0.0";
+
+            Console.WriteLine("Creating v" + version + " ...");
+
+            string releaseFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + Path.DirectorySeparatorChar + "releases" + Path.DirectorySeparatorChar + modid + Path.DirectorySeparatorChar;
+            Console.WriteLine("Creating '{0}' directory ...", releaseFolder);
+            if (!Directory.CreateDirectory(releaseFolder).Exists)
+            {
+                Console.WriteLine("Could not create release directory!");
+                return false;
+            }
+
+            string zipFilePath = releaseFolder + modid + "_v" + version + "_dll.zip";
+            if (File.Exists(zipFilePath))
+                File.Delete(zipFilePath);
+            ZipOutputStream archive = new ZipOutputStream(File.Create(zipFilePath));
+            archive.SetLevel(3);
+            List<string> files = new List<string>();
+            files.AddRange(Directory.GetFiles(modFolder, "*.dll", SearchOption.TopDirectoryOnly));
+            files.AddRange(Directory.GetFiles(modFolder + "assets", "*", SearchOption.AllDirectories));
+            files.Add(modFolder + "modinfo.json");
+            if (File.Exists(modFolder + "modicon.png"))
+                files.Add(modFolder + "modicon.png");
+
+            if (Directory.GetFiles(modFolder, "*.cs", SearchOption.TopDirectoryOnly).Length > 0)
+                Console.WriteLine("Find invalid *.cs files in top directory. Please move them to '/src/' otherwise they will be ignored!");
+
+            Console.WriteLine("Creating zip dll archive ...");
+            foreach (var file in files)
+                Tools.AddFileToZip(archive, file, file.Replace(modFolder, ""));
+            Tools.AddFileToZip(archive, selectedFile, Path.GetFileName(selectedFile));
+
+            archive.IsStreamOwner = true;
+            archive.Close();
+
+            Console.WriteLine("Release of '{0}' has been created successfully in '/releases/" + modid + "/" + modid + "_v" + version + "_dll.zip'", modid);
+            return true;
+
+        }
     }
 
     public class UpdateAllModCommand : VSCommand
