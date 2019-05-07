@@ -383,7 +383,7 @@ namespace vsmodtools
             string binpathdebug = "..\\..\\bin\\Debug\\" + modid + "\\";
             string binpathrelease = "..\\..\\bin\\Release\\" + modid + "\\";
             if (compiled)
-                binpathdebug = binpathrelease = "\\";
+                binpathdebug = binpathrelease = "\\bin\\";
 
             Dictionary<string, string> variables = new Dictionary<string, string>
             {
@@ -760,8 +760,8 @@ namespace vsmodtools
             }
             else if (File.Exists(folder + ".ignore"))
             {
-                variables["$(binpathdebug)"] = "\\";
-                variables["$(binpathrelease)"] = "\\";
+                variables["$(binpathdebug)"] = "\\bin\\";
+                variables["$(binpathrelease)"] = "\\bin\\";
             }
 
             string projectfile = folder + modid + ".csproj";
