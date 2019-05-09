@@ -185,6 +185,7 @@ namespace vsmodtools
             Console.WriteLine("Setting up workspace ...");
             List<string> possiblePaths = new List<string>();
 
+            bool linux = false;
             if (args.Length == 1)
             {
                 possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vintagestory"));
@@ -196,6 +197,7 @@ namespace vsmodtools
                     possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ApplicationData", "Vintagestory"));
                     possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ApplicationData", "vintagestory"));
                     possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Vintagestory"));
+                    linux = true;
                 }
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
@@ -261,10 +263,16 @@ namespace vsmodtools
 
             //also the mod template should be a .net v4.5.2 class library and not a .netcore standard 2 (but this might open up even more issues)
 
+            string[] postBuildCommand = new string[] { copyCommand + " \"$(TargetPath)\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "Mods\\\"", copyCommand + " \"$(TargetDir)\\$(TargetName).pdb\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "Mods\\\"" };
+
+            if (linux)
+                for (int i = 0; i < postBuildCommand.Length; i++)
+                    postBuildCommand[i] = postBuildCommand[i].Replace("\\", "/");
+
             new Patcher(new ConditionedLinePatch("<Reference Include=\"protobuf-net\">", "<HintPath>", "<HintPath>" + vspath + "Lib\\protobuf-net.dll</HintPath>", "</Reference>"),
                 new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"),
                 new ConditionedLinePatch("<Reference Include=\"VSSurvivalMod\">", "<HintPath>", "<HintPath>" + vspath + "Mods\\VSSurvivalMod.dll</HintPath>", "</Reference>"),
-                new InBetweenPatch("<PostBuildEvent>", "</PostBuildEvent>", copyCommand + " \"$(TargetPath)\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "Mods\\\"", copyCommand + " \"$(TargetDir)\\$(TargetName).pdb\" \"" + vspath.Replace("$(AppData)", "%25appdata%25") + "Mods\\\"")
+                new InBetweenPatch("<PostBuildEvent>", "</PostBuildEvent>", postBuildCommand)
             ).Patch(Tools.GetApplicationDirectory() + "VSModLauncher.csproj");
 
             Patcher modProjectFilePatcher = new Patcher(new ConditionedLinePatch("<Reference Include=\"VintagestoryAPI\">", "<HintPath>", "<HintPath>" + vspath + "VintagestoryAPI.dll</HintPath>", "</Reference>"));
