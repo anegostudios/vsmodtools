@@ -66,6 +66,11 @@
       <HintPath>$(vspath)Mods\VSCreativeMod.dll</HintPath>
       <Private>False</Private>
     </Reference>
+
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(vspath)Lib\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     
   </ItemGroup>
   <ItemGroup>
