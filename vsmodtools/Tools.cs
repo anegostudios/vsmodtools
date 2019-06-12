@@ -131,6 +131,20 @@ namespace vsmodtools
 
         }
 
+        public static string GetGameVersion(string path)
+        {
+            if (File.Exists(path + Path.DirectorySeparatorChar + "VintagestoryAPI.dll"))
+            {
+                //Loading VintageStoryAPI.dll
+                Assembly apiDLL = Assembly.LoadFile(path + Path.DirectorySeparatorChar + "VintagestoryAPI.dll");
+                Type gameVersionClass = apiDLL.GetType("Vintagestory.API.Config.GameVersion");
+
+                FieldInfo shortGameVersion = gameVersionClass.GetField("ShortGameVersion");
+                return (string)shortGameVersion.GetValue(null);
+            }
+            return "";
+        }
+
         public static bool CheckPath(string path)
         {
             if (path.Contains("$(AppData)"))
@@ -180,6 +194,37 @@ namespace vsmodtools
             return false;
         }
 
+        public static bool CheckAlias()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                string commandAlias = "alias copy=\"cp\"";
+                string path = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".bashrc") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".bash_profile");
+
+                Console.WriteLine("Scanning {0} ...", path);
+                if (File.Exists(path))
+                    foreach (var line in File.ReadAllLines(path))
+                        if (line.Equals(commandAlias))
+                            return true;
+
+                Console.WriteLine("Alias for copy command not found!");
+                Console.Write("Do you wish to create it automatically, otherwise abort. [y/n]: ");
+                if (Console.ReadKey().Key == ConsoleKey.Y)
+                {
+                    Console.WriteLine("Updating {0} ...", path);
+                    List<string> lines = new List<string>();
+                    if (File.Exists(path))
+                        lines.AddRange(File.ReadAllLines(path));
+                    lines.Add(commandAlias);
+                    File.WriteAllLines(path, lines.ToArray());
+                    return true;
+                }
+                Console.WriteLine();
+                return false;
+            }
+            return true;
+        }
+
         public override bool Run(string[] args)
         {
             Console.WriteLine("Setting up workspace ...");
@@ -189,7 +234,6 @@ namespace vsmodtools
             if (args.Length == 1)
             {
                 possiblePaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vintagestory"));
-
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
                     Console.WriteLine("Detecting Linux ...");
@@ -313,8 +357,13 @@ namespace vsmodtools
                 string vspath = File.ReadAllText(tempFile);
                 if (SetupCommand.CheckPath(vspath))
                 {
-                    Console.WriteLine("\n== Running Task ==");
-                    return Run(args, vspath);
+                    if (SetupCommand.CheckAlias())
+                    {
+                        Console.WriteLine("\n== Running Task ==");
+                        return Run(args, vspath);
+                    }
+                    else
+                        Console.WriteLine("Aborted because of missing alias!");
                 }
                 Console.WriteLine("Path=\"{0}\" is not available anymore. Please setup your workspace again!");
             }
@@ -390,20 +439,26 @@ namespace vsmodtools
 
             string binpathdebug = "..\\..\\bin\\Debug\\" + modid + "\\";
             string binpathrelease = "..\\..\\bin\\Release\\" + modid + "\\";
-            if (compiled)
-                binpathdebug = binpathrelease = "\\bin\\";
+            string postbuild = "";
+
+            if (compiled) {
+                binpathdebug = binpathrelease = "$(ProjectDir)\\bin";
+                postbuild = "copy \"$(TargetPath)\" \"$(ProjectDir)\" " + Environment.NewLine +
+                    "copy \"$(TargetDir)\\$(TargetName).pdb\" \"$(ProjectDir)\" ";
+            }
 
             Dictionary<string, string> variables = new Dictionary<string, string>
             {
                 { "$(modid)", modid },
-                { "$(gameversion)", "1.5.3" },
+                { "$(gameversion)", SetupCommand.GetGameVersion(vspath) },
                 { "$(vspath)", vspath },
                 { "$(projectguid)", projectID },
                 { "$(projectguidwithout)", projectID.Replace("{", "").Replace("}", "") },
                 { "$(AssetFiles)", "<Folder Include=\"assets\\\" />" },
                 { "$(SrcFiles)", "<Folder Include=\"src\\\" />\n    <Content Include=\"modinfo.json\" />" },
                 { "$(binpathdebug)", binpathdebug },
-                { "$(binpathrelease)", binpathrelease }
+                { "$(binpathrelease)", binpathrelease },
+                { "$(PostBuildEvent)", postbuild }
             };
 
             ModifyVariables(variables);
@@ -572,7 +627,8 @@ namespace vsmodtools
                 return false;
             }
 
-            string ignoreFile = Path.Combine(Tools.GetModPath(modid, false), ".ignore");
+            string modpath = Tools.GetModPath(modid, false);
+            string ignoreFile = Path.Combine(modpath, ".ignore");
             if (compiled)
             {
                 if (File.Exists(ignoreFile))
@@ -581,6 +637,8 @@ namespace vsmodtools
                     return false;
                 }
 
+                File.Delete(Path.Combine(modpath, modid + ".dll"));
+                File.Delete(Path.Combine(modpath, modid + ".pdb"));
                 File.WriteAllLines(ignoreFile, new string[] { "/src/" });
                 Console.WriteLine("Created ignore file.");
             }
@@ -752,13 +810,14 @@ namespace vsmodtools
             Dictionary<string, string> variables = new Dictionary<string, string>
             {
                 { "$(modid)", modid },
-                { "$(gameversion)", "1.5.3" },
+                { "$(gameversion)", SetupCommand.GetGameVersion(vspath) },
                 { "$(vspath)", vspath },
                 { "$(projectguid)", projectID },
                 { "$(AssetFiles)", assetFiles },
                 { "$(SrcFiles)", srcFiles },
                 { "$(binpathdebug)", "..\\..\\bin\\Debug\\" + modid + "\\" },
-                { "$(binpathrelease)", "..\\..\\bin\\Release\\" + modid + "\\" }
+                { "$(binpathrelease)", "..\\..\\bin\\Release\\" + modid + "\\" },
+                { "$(PostBuildEvent)", "" }
             };
 
             if (dll)
@@ -768,8 +827,10 @@ namespace vsmodtools
             }
             else if (File.Exists(folder + ".ignore"))
             {
-                variables["$(binpathdebug)"] = "\\bin\\";
-                variables["$(binpathrelease)"] = "\\bin\\";
+                variables["$(binpathdebug)"] = "$(ProjectDir)\\bin";
+                variables["$(binpathrelease)"] = "$(ProjectDir)\\bin";
+                variables["$(PostBuildEvent)"] = "copy \"$(TargetPath)\" \"$(ProjectDir)\" " + Environment.NewLine +
+                    "copy \"$(TargetDir)\\$(TargetName).pdb\" \"$(ProjectDir)\" "; ;
             }
 
             string projectfile = folder + modid + ".csproj";
@@ -1028,12 +1089,12 @@ namespace vsmodtools
             Console.WriteLine("Creating v" + version + " ...");
 
             bool compiled = File.Exists(modFolder + ".ignore");
-
+            string dllfile = Path.Combine(modFolder, modid + ".dll");
             if (compiled)
             {
                 // Check for compiled dll date
                 DateTime time = DateTime.MinValue;
-                string dllfile = modFolder + modid + ".dll";
+                
 
                 if (!File.Exists(dllfile))
                 {
@@ -1106,11 +1167,11 @@ namespace vsmodtools
             files.AddRange(Directory.GetFiles(modFolder, "*.dll", SearchOption.TopDirectoryOnly));
             files.AddRange(Directory.GetFiles(modFolder + "assets", "*", SearchOption.AllDirectories));
             if (compiled)
-                files.Add(modFolder + modid + ".dll");
+                files.Add(dllfile);
             else
                 files.AddRange(Directory.GetFiles(modFolder + "src", "*", SearchOption.AllDirectories));
             files.Add(modFolder + "modinfo.json");
-            
+
             if (File.Exists(modFolder + "modicon.png"))
                 files.Add(modFolder + "modicon.png");
 
