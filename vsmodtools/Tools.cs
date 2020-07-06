@@ -1061,7 +1061,7 @@ namespace vsmodtools
 
             if (Tools.IsDLLMod(modid) && Tools.DoesModExist(modid, true))
             {
-                Console.WriteLine("'{0} is a dll mod!");
+                Console.WriteLine("'{0}' is a dll mod!", modid);
                 return false;
             }
 
