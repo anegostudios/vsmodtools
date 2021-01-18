@@ -1092,10 +1092,6 @@ namespace vsmodtools
             string dllfile = Path.Combine(modFolder, modid + ".dll");
             if (compiled)
             {
-                // Check for compiled dll date
-                DateTime time = DateTime.MinValue;
-                
-
                 if (!File.Exists(dllfile))
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
@@ -1103,6 +1099,9 @@ namespace vsmodtools
                     Console.ForegroundColor = ConsoleColor.White;
                     return false;
                 }
+
+                // Check for compiled dll date
+                DateTime time = File.GetLastWriteTime(dllfile);
 
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine("Don't forget to compile your mod first!");
@@ -1166,9 +1165,7 @@ namespace vsmodtools
             List<string> files = new List<string>();
             files.AddRange(Directory.GetFiles(modFolder, "*.dll", SearchOption.TopDirectoryOnly));
             files.AddRange(Directory.GetFiles(modFolder + "assets", "*", SearchOption.AllDirectories));
-            if (compiled)
-                files.Add(dllfile);
-            else
+            if (!compiled) 
                 files.AddRange(Directory.GetFiles(modFolder + "src", "*", SearchOption.AllDirectories));
             files.Add(modFolder + "modinfo.json");
 
