@@ -578,13 +578,14 @@ namespace vsmodtools
             variables["$(binpathdebug)"] = "..\\..\\mods\\";
             variables["$(binpathrelease)"] = "..\\..\\mods\\";
             variables["$(AssetFiles)"] = "";
-            variables["$(SrcFiles)"] = "<Compile Include=\"Properties\\AssemblyInfo.cs\" />";
+            variables["$(SrcFiles)"] = "<Compile Include=\"Properties\\AssemblyInfo.cs\" /><Compile Include=\"Core.cs\" />";
         }
 
         public override void CreateProjectFiles(string folder, Dictionary<string, string> variables, bool compiled)
         {
             Directory.CreateDirectory(folder + Path.DirectorySeparatorChar + "Properties" + Path.DirectorySeparatorChar);
             File.WriteAllLines(folder + Path.DirectorySeparatorChar + "Properties" + Path.DirectorySeparatorChar + "AssemblyInfo.cs", Tools.ReadLines("vsmodtools.assemblyinfo.template", variables));
+            File.WriteAllLines(folder + Path.DirectorySeparatorChar + "Core.cs", Tools.ReadLines("vsmodtools.core.template", variables));
         }
 
         public override bool IsDLL()
